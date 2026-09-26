@@ -34,7 +34,7 @@ void stock_scan(void);
 #define PIN_PB11 ((const char *)0x40293d6c)
 
 #define TICK_MS 10
-#define STABLE_READS 2  // a change counts once read the same this many ticks in a row
+#define COLUMN_HOLD 10   // ticks an "up" in a busy column is held back (flicker lasts up to ~100 ms)
 #define NKEYS 18
 
 // Bit n of the key state is key id n + 1 for the 15 display keys; bits 15..17
@@ -74,15 +74,16 @@ static int ghosted(uint32_t s) {
 static int ghosted(uint32_t s) { (void)s; return 0; }
 #endif
 
-// True if another display key in the same column as bit k reads pressed. A
-// held key is then not reported up: in this matrix that "up" is usually the
-// column fight hiding it, not a release. It is reported once the column is
-// clear, so a real release there arrives late rather than a false one early.
-static int column_busy(uint32_t now, int k) {
-  if (k >= 15) return 0;
-  int c = k % 5;
-  uint32_t col = (1u << c) | (1u << (c + 5)) | (1u << (c + 10));
-  return (now & col & ~(1u << k)) != 0;
+// Display keys whose column has another key reading pressed, in some other
+// row. A held key that reads up there is probably the column fight hiding it,
+// not a release. Two cases:
+//  - it vanished just as a new key in its column went down: that key is hiding
+//    it, so its up waits until it reappears or the column clears ("masked");
+//  - otherwise it is flicker or a real release: its up waits COLUMN_HOLD ticks,
+//    so a flicker comes back sooner and a tap still gets through.
+__attribute__((noinline)) static uint32_t column_busy(uint32_t now) {
+  uint32_t a = now & 31, b = (now >> 5) & 31, c = (now >> 10) & 31;
+  return (b | c) | ((a | c) << 5) | ((a | b) << 10);
 }
 
 void rollover_thread(void *param) {
@@ -91,43 +92,55 @@ void rollover_thread(void *param) {
   // buffer is only rewritten after the endpoint has accepted the next one.
   // They come from the heap, allocated once and never freed, so this thread
   // needs no more stack than the stock one did.
-  static const uint8_t header[8] = {'A', 'C', 'K', 0, 0, 'O', 'K', 0};
   uint8_t (*buf)[0x200] = 0;
   if (pin_read(PIN(8))) buf = rt_malloc(2 * 0x200);
   int safe = !buf;
   if (!safe) {
     memset(buf, 0, 2 * 0x200);
-    for (int i = 0; i < 8; i++) buf[0][i] = buf[1][i] = header[i];
+    // Report header "ACK\0\0OK\0", as two little-endian words (as the stock code builds it).
+    for (int i = 0; i < 2; i++) {
+      ((uint32_t *)buf[i])[0] = 0x004b4341;
+      ((uint32_t *)buf[i])[1] = 0x004b4f00;
+    }
   }
 
-  uint32_t stable = 0, last = 0;
-  int cur = 0, same = 0;
+  uint32_t stable = 0, last = 0, pend = 0, masked = 0;
+  int cur = 0, pend_ticks = 0;
   for (;;) {
     if (safe || MODE_AWAKE != 1 || MODE_HOST != 1) {
       stable = last = 0;
-      same = 0;
       stock_scan();
       rt_thread_mdelay(30);
       continue;
     }
     uint32_t now = read_keys();
-    // Debounce: act only on a state read the same on STABLE_READS ticks in a row.
-    same = now == last ? same + (same < STABLE_READS) : 1;
-    if (same >= STABLE_READS && !ghosted(now)) {
+    // Held keys reading up in a busy column, and for how long that set has held.
+    uint32_t busy_up = stable & ~now & column_busy(now);
+    if (busy_up != pend) pend = busy_up, pend_ticks = 0;
+    else pend_ticks++;  // wraps only after months of one unchanged set
+    // A held key that vanished just as a new key in its column went down is
+    // being hidden by that key: hold its up until it reappears or the column clears.
+    masked = (masked | column_busy(now & ~stable)) & busy_up;
+    // Debounce per key: a key counts once it reads the same on two ticks in a
+    // row, whatever other keys do (two keys fighting in one column make the
+    // whole state jump, which must not hold up everyone else).
+    uint32_t settled = ~(now ^ last);
+    if (!ghosted(now)) {
       for (int k = 0; k < NKEYS; k++) {
         uint32_t bit = 1u << k;
-        if (!((now ^ stable) & bit)) continue;
-        if ((stable & bit) && column_busy(now, k)) continue;  // up held back, see column_busy()
+        if (!((now ^ stable) & settled & bit)) continue;
+        if ((masked & bit) || ((pend & bit) && pend_ticks < COLUMN_HOLD)) continue;  // up held back
         uint8_t *q = buf[cur];
         q[9] = k < 15 ? k + 1 : k == 15 ? 0x25 : k + 0x20;
         q[10] = (now & bit) != 0;
-        int tries = 0;
-        while (hid_send(q, 0x200) == -2 && ++tries < 20) rt_thread_mdelay(1);
-        if (tries == 20) break;  // host not reading: retry this key next tick
+        unsigned tries = 1 << 16;  // a transfer takes microseconds; spin rather than sleep
+        while (hid_send(q, 0x200) == -2)
+          if (!--tries) goto next_tick;  // host not reading: retry this key next tick
         stable ^= bit;
         cur ^= 1;
       }
     }
+  next_tick:
     last = now;
     rt_thread_mdelay(TICK_MS);
   }

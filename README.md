@@ -46,8 +46,9 @@ It saves what was on the dock before writing, and never touches the bootloader u
 
 The stock firmware reports one key at a time. While any key is held, every other key is
 invisible, and presses in that window are lost rather than queued. That is fine for a macro pad
-and useless for music. It is a firmware limitation, not a hardware one: the key scan waits on the
-first pressed key until it is released. See §7 of the protocol reference in
+and useless for music. That part is a firmware limitation, not a hardware one: the key scan
+waits on the first pressed key until it is released. (The key matrix has no diodes, which
+brings one smaller hardware limit for keys in the same column; see [PATCH.md](PATCH.md).) See §7 of the protocol reference in
 [streamdock-m18](https://github.com/bidoofgoo/streamdock-m18/blob/main/PROTOCOL.md).
 
 ## How it works
@@ -66,7 +67,8 @@ script** that you apply to a backup of **your own** dock:
 **Step by step, with safe mode and how to go back: [PATCH.md](PATCH.md).**
 
 The patch keeps the existing key report format and only changes *when* reports are sent: one
-down or up event per key that changes, for any number of keys. Hosts that already speak the M18
+down or up event per key that changes, for several keys at once (with the column limit in
+[PATCH.md](PATCH.md)). Hosts that already speak the M18
 protocol, including the streamdock-m18 driver and `dockd`, then get chords with no changes on
 their side.
 

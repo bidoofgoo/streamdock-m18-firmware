@@ -1,7 +1,8 @@
 # Multi-key rollover patch
 
 How to put the rollover patch on your own Stream Dock M18. Afterwards the dock reports every key
-press and release, however many keys are held: chords work.
+press and release with several keys held, so chords work, with one hardware limit for keys in
+the same column (see below).
 
 > [!CAUTION]
 > **Your backup is your only way back.** The firmware this patch is built on is not published
@@ -13,9 +14,11 @@ press and release, however many keys are held: chords work.
 - Every key reports its own down and up, for many keys at once. Tested with 11 held
   (8 display keys and all 3 plain buttons).
 - **One hardware limit:** the M18's keys are wired as a matrix without diodes. Two keys in the
-  same **column** (above each other, e.g. 2 and 7, or 2 and 12) share a wire. They still both
-  work, but when you release one of them while the other is held, its "up" can arrive late, and
-  a lower key pressed while an upper one is held may only appear once the upper one is released.
+  same **column** (above each other, e.g. 2 and 7, or 2 and 12) share a wire. The firmware
+  works around most of the interference this causes (holding an upper key while tapping a lower
+  one works), but one case is beyond it: **with a lower key held, e.g. 12, the keys above it in
+  the same column (2 and 7) usually don't register.** Press the upper key first if you need both.
+  Only a diode per key, soldered onto the board, would fix that.
   Keys side by side, or in different columns, are not affected. See DESIGN.md.
 - The **same report format** as stock. Software that already reads the M18's key events
   (the [streamdock-m18](https://github.com/bidoofgoo/streamdock-m18) driver, `dockd`) gets

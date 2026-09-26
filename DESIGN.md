@@ -35,6 +35,10 @@ buttons report `0x25`, `0x30` and `0x31`.
 
 ## What the patch should do
 
+The original plan, written before the hardware was understood. What was built, and why it
+differs (no diodes, so idle rows stay driven and a column rule handles the fallout), is under
+[Implementation](#implementation-02020).
+
 Replace the scan body with a non-blocking one:
 
 ```
@@ -99,18 +103,19 @@ every scan tick:
 refuses anything but the exact 02.020 `seg0` (md5 checked) and checks every instruction it
 changes first.
 
-- **Where:** 522 of 558 bytes at `0x40245f2e..0x4024615c`: the stock scan's normal-mode tail, the
+- **Where:** 546 of 558 bytes at `0x40245f2e..0x4024615c`: the stock scan's normal-mode tail, the
   plain-button routine and the old thread entry, none of which the patched firmware reaches.
 - **Edits:** the thread-create `addi` now points at the new entry; the three per-row
   "normal mode" branches in the stock scan jump to that row's release-and-continue label
   instead, so a mode change mid-scan cannot reach the overwritten code.
 - **Behaviour:** normal mode (both mode flags 1): scan all 15 keys and the 3 plain buttons every
-  10 ms, act on a state seen on two ticks in a row (with the column rule below), send
-  one stock-format report per changed key from two alternating DMA buffers (retry on busy for
-  about 20 ms, then retry that key next tick). The buffers (2 x 512 bytes) come from `rt_malloc`
+  10 ms, act on a key once it reads the same on two ticks in a row (per key, so one key's
+  flicker never holds up another; with the column rule below), send one stock-format report
+  per changed key from two alternating DMA buffers (spin while the endpoint is busy, with a
+  bound, then retry that key next tick). The buffers (2 x 512 bytes) come from `rt_malloc`
   (0x40223326) once at start and are never freed. Any other mode: call the stock scan every 30 ms,
   so sleep and wake are unchanged.
-- **Stack:** the entry frame is 0x50 bytes, less than the stock entry plus its plain-button
+- **Stack:** the entry frame is 0x60 bytes, less than the stock entry plus its plain-button
   routine (0x10 + 0x220), so the thread never goes deeper than stock did.
 - **Safe mode:** holding the left plain button (PA.8) while plugging in, until the screen is
   up, or a failed `rt_malloc`, runs only the stock scan loop. Then **no keys report at all**:
@@ -129,13 +134,29 @@ changes first.
      down, 15 + 10 likewise, and 2 + 7 made 2 flicker for 20 to 100 ms at a time.
   2. *Idle rows released* to pull-up inputs: no fight, but phantoms (6 + 7 + 1 showed 2; two keys
      in a column showed the third row's key). Dropped.
-  3. *Idle rows driven high, plus a column rule* (current): a held key is not reported up while
-     another key in its column reads pressed; the up follows once the column is clear. This
-     removed both the flicker and the false "12 up". Retest: 12 + 2, 2 + 7 (five times), 2 then
-     12, trills and plain buttons with keys, all clean.
-  What is left: in a column, releasing one key while the other is still held can report that
-  up late (when the column clears), and a lower key pressed while an upper one is held may only
-  show once the upper is released. Keys in different columns are not affected.
+  3. *Idle rows driven high, plus a column rule*: a held key is not reported up while another
+     key in its column reads pressed; the up follows once the column is clear. Removed the
+     flicker and the false "12 up", but a key tapped again while another in its column was held
+     only reported its first tap (its up was held back, so it never went down again).
+  4. *As 3, but the up is held back for at most 100 ms* (`COLUMN_HOLD`): taps work again, but
+     "2 held, then 12 pressed" gave a false "2 up" after 100 ms, because 12 hides 2 for as long
+     as 12 is held.
+  5. *As 4, plus masking detection*: a held key that vanishes just as a new key in its
+     column goes down is "masked", and its up waits until it reappears or the column clears.
+     Other ups in a busy column wait at most 100 ms. Retest: 2 held with 12 tapped ten times (2
+     stayed held), 7 held with 2 tapped eleven times (taps as close as 80 ms apart all
+     reported), 2 + 7 held over 4 s (no flicker).
+  6. *As 5, with the debounce per key instead of for the whole state* (current). With a global
+     debounce, two keys fighting in a column made the whole state jump from tick to tick, which
+     could hold up every report.
+  **Hardware limit, confirmed by an A/B test:** with a lower key held (e.g. 12), the keys above it
+  in the same column (2, 7) are usually not read at all. Version 3, flashed back unchanged,
+  showed 2 alongside 12 in one test and neither 2 nor 7 in the next, so it depends on the press,
+  not on the firmware: the held lower row wins the fight. The other order (upper key held, lower
+  key added) works. Only a diode per key would fix this.
+  Also left: flicker longer than 100 ms could leak through, and a key really released while
+  masked reports its up only when the column clears. Keys in different columns are not
+  affected.
 - **Ghost filter:** off (the column rule plus driven rows keeps phantoms out). Building with
   `-DGHOST_FILTER` additionally ignores any scan where two rows share two or more columns.
 - **Known limits:** keys held while the dock leaves normal mode get no "up" report.
