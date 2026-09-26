@@ -1,0 +1,19 @@
+{
+  "name": "streamdock-m18-firmware",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Firmware backup and patches for the Mirabox / VSDinside Stream Dock M18",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "backup": "node tools/backup.js",
+    "restore": "node tools/restore.js",
+    "keytest": "node tools/keytest.js",
+    "ramtest": "node tools/ramtest.js",
+    "patch": "node tools/patch.js",
+    "build-patch": "node tools/build-patch.js"
+  },
+  "dependencies": {
+    "node-hid": "^3.2.0"
+  }
+}

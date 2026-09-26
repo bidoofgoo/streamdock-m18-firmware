@@ -7,3 +7,6 @@ node_modules/
 *.aic
 backups/
 work/
+
+# local working notes: device serials, local paths, vendor details
+FIRMWARE-NOTES.md
