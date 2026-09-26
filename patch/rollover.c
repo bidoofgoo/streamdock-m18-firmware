@@ -21,7 +21,7 @@ void *memset(void *s, int c, unsigned n);
 void *rt_malloc(unsigned size);
 void rt_thread_mdelay(int ms);
 int hid_send(void *buf, int len);          // -2 while the endpoint is busy
-void pin_write(const char *name, int level);
+void pin_write(const char *name, int level);   // also sets the pin to output
 int pin_read(const char *name);
 void stock_scan(void);
 
@@ -34,10 +34,18 @@ void stock_scan(void);
 #define PIN_PB11 ((const char *)0x40293d6c)
 
 #define TICK_MS 10
+#define STABLE_READS 2  // a change counts once read the same this many ticks in a row
 #define NKEYS 18
 
 // Bit n of the key state is key id n + 1 for the 15 display keys; bits 15..17
 // are the plain buttons 0x25, 0x30, 0x31.
+//
+// Idle rows are driven high, like the stock scan. The matrix has no diodes, so
+// releasing them instead (tried) makes phantom keys appear; driving them high
+// keeps phantoms out, at a price: with two keys held in one column the two rows
+// fight through the shared column, and one of those keys can flicker or stay
+// hidden until the other is released. Keys in one row are unaffected. See
+// column_busy() for how the flicker is kept out of the reports.
 static uint32_t read_keys(void) {
   uint32_t s = 0;
   for (int r = 0; r < 3; r++) {
@@ -52,10 +60,10 @@ static uint32_t read_keys(void) {
   return s;
 }
 
-// Without a diode per key, three keys on the corners of a rectangle make the
-// fourth read as pressed. The M18 tested (02.020, HXJDF) shows no such ghosts,
-// so this is off by default. Build with -DGHOST_FILTER for a board without
-// diodes: a scan where two rows share two or more columns is then ignored.
+// Without a diode per key, three keys on the corners of a rectangle can make
+// the fourth read as pressed. The M18 has no diodes, but with idle rows driven
+// high no phantoms showed up in testing, so this is off by default. Build with
+// -DGHOST_FILTER to also ignore any scan where two rows share two or more columns.
 #ifdef GHOST_FILTER
 static int ghosted(uint32_t s) {
   uint32_t a = s & 31, b = (s >> 5) & 31, c = (s >> 10) & 31;
@@ -65,6 +73,17 @@ static int ghosted(uint32_t s) {
 #else
 static int ghosted(uint32_t s) { (void)s; return 0; }
 #endif
+
+// True if another display key in the same column as bit k reads pressed. A
+// held key is then not reported up: in this matrix that "up" is usually the
+// column fight hiding it, not a release. It is reported once the column is
+// clear, so a real release there arrives late rather than a false one early.
+static int column_busy(uint32_t now, int k) {
+  if (k >= 15) return 0;
+  int c = k % 5;
+  uint32_t col = (1u << c) | (1u << (c + 5)) | (1u << (c + 10));
+  return (now & col & ~(1u << k)) != 0;
+}
 
 void rollover_thread(void *param) {
   (void)param;
@@ -82,20 +101,23 @@ void rollover_thread(void *param) {
   }
 
   uint32_t stable = 0, last = 0;
-  int cur = 0;
+  int cur = 0, same = 0;
   for (;;) {
     if (safe || MODE_AWAKE != 1 || MODE_HOST != 1) {
       stable = last = 0;
+      same = 0;
       stock_scan();
       rt_thread_mdelay(30);
       continue;
     }
     uint32_t now = read_keys();
-    // Debounce: act only on a state read the same on two ticks in a row.
-    if (now == last && !ghosted(now)) {
+    // Debounce: act only on a state read the same on STABLE_READS ticks in a row.
+    same = now == last ? same + (same < STABLE_READS) : 1;
+    if (same >= STABLE_READS && !ghosted(now)) {
       for (int k = 0; k < NKEYS; k++) {
         uint32_t bit = 1u << k;
         if (!((now ^ stable) & bit)) continue;
+        if ((stable & bit) && column_busy(now, k)) continue;  // up held back, see column_busy()
         uint8_t *q = buf[cur];
         q[9] = k < 15 ? k + 1 : k == 15 ? 0x25 : k + 0x20;
         q[10] = (now & bit) != 0;

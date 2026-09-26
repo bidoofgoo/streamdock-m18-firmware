@@ -61,11 +61,10 @@ every scan tick:
 
 ## Open questions
 
-1. ~~**Diodes.**~~ Answered on hardware: holding 6 + 7 and tapping 2 reports every tap, and
-   key 1 never appears, so there is no ghosting on the 02.020 (HXJDF) unit. Original question:
-   Is there a diode per key? Without them, three keys forming a rectangle make a
-   fourth appear (ghosting). Needs a look at the PCB. If there are none, the patch should detect
-   ghost patterns and suppress them, rather than report phantom keys.
+1. ~~**Diodes.**~~ Answered on hardware (2026-09-26): **there are none.** With idle rows
+   released to pull-up inputs, 6 + 7 + 1 makes 2 appear, and two keys in one column make the
+   third row's key appear. Driving idle rows high (as the stock scan does) keeps phantoms out, and
+   the price is a fight between rows when two keys share a column. See "Rows and columns" below.
 2. ~~**02.020 layout.**~~ Done: same design as 02.015 at shifted addresses.
 3. **Space.** Does the new scan fit in place of the old one, or does it need a code cave or an
    appended segment? The FIT image has room: the `os` partition is 2 MB and the image is
@@ -86,9 +85,9 @@ every scan tick:
    (`npm run restore`, see RESTORE.md).
 4. ~~The patch itself, behind an exact version check.~~ Done and flashed on a 02.020 unit
    (2026-09-26): `npm run keytest` showed two- and three-key chords, every press and release
-   reported, on all 15 display keys. Later the same day, without the ghost filter: up to 11 keys at once
-   (8 display keys and all 3 plain buttons), rectangle chords such as 1 + 2 + 6 + 7, no ghosts.
-   Sleep and wake work. Safe mode works (see below).
+   reported, on all 15 display keys. Up to 11 keys at once (8 display keys and all 3 plain
+   buttons). Sleep and wake work. Safe mode works (see below). The column handling went through
+   three versions the same day; see "Rows and columns".
 5. Host side: an optional "rollover" capability flag in streamdock-m18, detected from the
    firmware version string.
 
@@ -100,13 +99,13 @@ every scan tick:
 refuses anything but the exact 02.020 `seg0` (md5 checked) and checks every instruction it
 changes first.
 
-- **Where:** 454 of 558 bytes at `0x40245f2e..0x4024615c`: the stock scan's normal-mode tail, the
+- **Where:** 522 of 558 bytes at `0x40245f2e..0x4024615c`: the stock scan's normal-mode tail, the
   plain-button routine and the old thread entry, none of which the patched firmware reaches.
 - **Edits:** the thread-create `addi` now points at the new entry; the three per-row
   "normal mode" branches in the stock scan jump to that row's release-and-continue label
   instead, so a mode change mid-scan cannot reach the overwritten code.
 - **Behaviour:** normal mode (both mode flags 1): scan all 15 keys and the 3 plain buttons every
-  10 ms, act on a state seen on two ticks in a row, send
+  10 ms, act on a state seen on two ticks in a row (with the column rule below), send
   one stock-format report per changed key from two alternating DMA buffers (retry on busy for
   about 20 ms, then retry that key next tick). The buffers (2 x 512 bytes) come from `rt_malloc`
   (0x40223326) once at start and are never freed. Any other mode: call the stock scan every 30 ms,
@@ -123,9 +122,22 @@ changes first.
   (one string at 0x402965d4, copied as exactly 22 bytes). Still numeric and above every vendor
   release, so VSD Craft does not offer an "update". Hosts can recognise the patched firmware by
   that exact string (last field 420).
-- **Ghost filter:** off, since the tested unit shows no ghosting. Building with
-  `-DGHOST_FILTER` brings it back for a board without diodes (a scan where two rows share two
-  or more columns is ignored).
+- **Rows and columns.** The matrix has no diodes, so a choice has to be made. Tried on
+  hardware, 2026-09-26:
+  1. *Idle rows driven high* (as stock), 2-read debounce: no phantoms, but with two keys held in
+     one column the rows fight. The upper key always wins: 12 + 2 reported "12 up" when 2 went
+     down, 15 + 10 likewise, and 2 + 7 made 2 flicker for 20 to 100 ms at a time.
+  2. *Idle rows released* to pull-up inputs: no fight, but phantoms (6 + 7 + 1 showed 2; two keys
+     in a column showed the third row's key). Dropped.
+  3. *Idle rows driven high, plus a column rule* (current): a held key is not reported up while
+     another key in its column reads pressed; the up follows once the column is clear. This
+     removed both the flicker and the false "12 up". Retest: 12 + 2, 2 + 7 (five times), 2 then
+     12, trills and plain buttons with keys, all clean.
+  What is left: in a column, releasing one key while the other is still held can report that
+  up late (when the column clears), and a lower key pressed while an upper one is held may only
+  show once the upper is released. Keys in different columns are not affected.
+- **Ghost filter:** off (the column rule plus driven rows keeps phantoms out). Building with
+  `-DGHOST_FILTER` additionally ignores any scan where two rows share two or more columns.
 - **Known limits:** keys held while the dock leaves normal mode get no "up" report.
 
 ## Running from RAM (tried 2026-09-26: does not work yet)

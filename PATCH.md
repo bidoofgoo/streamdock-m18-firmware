@@ -10,8 +10,13 @@ press and release, however many keys are held: chords work.
 
 ## What you get
 
-- Every key reports its own down and up, for any number of keys at once. Tested with 11 held
-  (8 display keys and all 3 plain buttons), including rectangle shapes such as 1 + 2 + 6 + 7.
+- Every key reports its own down and up, for many keys at once. Tested with 11 held
+  (8 display keys and all 3 plain buttons).
+- **One hardware limit:** the M18's keys are wired as a matrix without diodes. Two keys in the
+  same **column** (above each other, e.g. 2 and 7, or 2 and 12) share a wire. They still both
+  work, but when you release one of them while the other is held, its "up" can arrive late, and
+  a lower key pressed while an upper one is held may only appear once the upper one is released.
+  Keys side by side, or in different columns, are not affected. See DESIGN.md.
 - The **same report format** as stock. Software that already reads the M18's key events
   (the [streamdock-m18](https://github.com/bidoofgoo/streamdock-m18) driver, `dockd`) gets
   chords with no change.

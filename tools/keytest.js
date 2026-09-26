@@ -57,5 +57,6 @@ export async function listen(seconds, idle = 4) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const s = Number(process.argv[2] ?? 30);
-  listen(Number.isFinite(s) && s > 0 ? s : 30).then(() => process.exit(0));
+  const idle = Number(process.argv[3] ?? 4);
+  listen(Number.isFinite(s) && s > 0 ? s : 30, Number.isFinite(idle) && idle > 0 ? idle : 4).then(() => process.exit(0));
 }
