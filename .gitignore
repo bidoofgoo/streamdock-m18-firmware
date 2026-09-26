@@ -1,0 +1,9 @@
+node_modules/
+
+# vendor firmware and anything derived from it: never commit
+*.bin
+*.img
+*.itb
+*.aic
+backups/
+work/
