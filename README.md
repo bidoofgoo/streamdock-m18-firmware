@@ -15,8 +15,8 @@ reported over USB, so the dock can play chords.
 
 > **Status:** the [firmware backup](BACKUP.md) works and is verified. The
 > [restore tool](RESTORE.md) works: tested with a full rewrite of the firmware partition. The
-> rollover patch works on a 02.020 unit (flashed 2026-09-26): chords of up to three keys, all
-> presses and releases reported. Still to test: four-key chords, the plain buttons, safe mode.
+> rollover patch works on a 02.020 unit (flashed 2026-09-26): up to 11 keys at once, every
+> press and release reported, no ghosting. Still to test: safe mode.
 
 ## Back up your dock first
 

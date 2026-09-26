@@ -61,7 +61,9 @@ every scan tick:
 
 ## Open questions
 
-1. **Diodes.** Is there a diode per key? Without them, three keys forming a rectangle make a
+1. ~~**Diodes.**~~ Answered on hardware: holding 6 + 7 and tapping 2 reports every tap, and
+   key 1 never appears, so there is no ghosting on the 02.020 (HXJDF) unit. Original question:
+   Is there a diode per key? Without them, three keys forming a rectangle make a
    fourth appear (ghosting). Needs a look at the PCB. If there are none, the patch should detect
    ghost patterns and suppress them, rather than report phantom keys.
 2. ~~**02.020 layout.**~~ Done: same design as 02.015 at shifted addresses.
@@ -84,8 +86,9 @@ every scan tick:
    (`npm run restore`, see RESTORE.md).
 4. ~~The patch itself, behind an exact version check.~~ Done and flashed on a 02.020 unit
    (2026-09-26): `npm run keytest` showed two- and three-key chords, every press and release
-   reported, on all 15 display keys. Not yet tried: four-key chords (ghost check), the plain
-   buttons, safe mode, sleep and wake.
+   reported, on all 15 display keys. Later the same day, without the ghost filter: up to 11 keys at once
+   (8 display keys and all 3 plain buttons), rectangle chords such as 1 + 2 + 6 + 7, no ghosts.
+   Sleep and wake work. Not yet tried: safe mode.
 5. Host side: an optional "rollover" capability flag in streamdock-m18, detected from the
    firmware version string.
 
@@ -97,13 +100,13 @@ every scan tick:
 refuses anything but the exact 02.020 `seg0` (md5 checked) and checks every instruction it
 changes first.
 
-- **Where:** 494 of 558 bytes at `0x40245f2e..0x4024615c`: the stock scan's normal-mode tail, the
+- **Where:** 454 of 558 bytes at `0x40245f2e..0x4024615c`: the stock scan's normal-mode tail, the
   plain-button routine and the old thread entry, none of which the patched firmware reaches.
 - **Edits:** the thread-create `addi` now points at the new entry; the three per-row
   "normal mode" branches in the stock scan jump to that row's release-and-continue label
   instead, so a mode change mid-scan cannot reach the overwritten code.
 - **Behaviour:** normal mode (both mode flags 1): scan all 15 keys and the 3 plain buttons every
-  10 ms, act on a state seen on two ticks in a row, ignore scans with a ghost rectangle, send
+  10 ms, act on a state seen on two ticks in a row, send
   one stock-format report per changed key from two alternating DMA buffers (retry on busy for
   about 20 ms, then retry that key next tick). The buffers (2 x 512 bytes) come from `rt_malloc`
   (0x40223326) once at start and are never freed. Any other mode: call the stock scan every 30 ms,
@@ -118,9 +121,10 @@ changes first.
   (one string at 0x402965d4, copied as exactly 22 bytes). Still numeric and above every vendor
   release, so VSD Craft does not offer an "update". Hosts can recognise the patched firmware by
   that exact string (last field 420).
-- **Known limits:** a real four-key rectangle chord is ignored as a possible ghost until a key
-  is released (drop the check once the PCB is known to have diodes). Keys held while the dock
-  leaves normal mode get no "up" report.
+- **Ghost filter:** off, since the tested unit shows no ghosting. Building with
+  `-DGHOST_FILTER` brings it back for a board without diodes (a scan where two rows share two
+  or more columns is ignored).
+- **Known limits:** keys held while the dock leaves normal mode get no "up" report.
 
 ## Running from RAM (tried 2026-09-26: does not work yet)
 

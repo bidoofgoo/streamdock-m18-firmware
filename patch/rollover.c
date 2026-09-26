@@ -52,13 +52,18 @@ static uint32_t read_keys(void) {
 }
 
 // Without a diode per key, three keys on the corners of a rectangle make the
-// fourth read as pressed. Any two rows sharing two or more columns is such a
-// rectangle, and the scan is then ambiguous, so it is ignored.
+// fourth read as pressed. The M18 tested (02.020, HXJDF) shows no such ghosts,
+// so this is off by default. Build with -DGHOST_FILTER for a board without
+// diodes: a scan where two rows share two or more columns is then ignored.
+#ifdef GHOST_FILTER
 static int ghosted(uint32_t s) {
   uint32_t a = s & 31, b = (s >> 5) & 31, c = (s >> 10) & 31;
   uint32_t x = a & b, y = a & c, z = b & c;
   return (x & (x - 1)) | (y & (y - 1)) | (z & (z - 1));
 }
+#else
+static int ghosted(uint32_t s) { (void)s; return 0; }
+#endif
 
 void rollover_thread(void *param) {
   (void)param;
