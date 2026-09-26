@@ -88,7 +88,7 @@ every scan tick:
    (2026-09-26): `npm run keytest` showed two- and three-key chords, every press and release
    reported, on all 15 display keys. Later the same day, without the ghost filter: up to 11 keys at once
    (8 display keys and all 3 plain buttons), rectangle chords such as 1 + 2 + 6 + 7, no ghosts.
-   Sleep and wake work. Not yet tried: safe mode.
+   Sleep and wake work. Safe mode works (see below).
 5. Host side: an optional "rollover" capability flag in streamdock-m18, detected from the
    firmware version string.
 
@@ -113,10 +113,12 @@ changes first.
   so sleep and wake are unchanged.
 - **Stack:** the entry frame is 0x50 bytes, less than the stock entry plus its plain-button
   routine (0x10 + 0x220), so the thread never goes deeper than stock did.
-- **Safe mode:** holding the left plain button (PA.8) while plugging in, or a failed
-  `rt_malloc`, runs only the stock scan loop. Display keys then work as stock and the plain
-  buttons are silent. Meant as a way back to a working dock (and to `npm run restore`) if the
-  new scan ever misbehaves.
+- **Safe mode:** holding the left plain button (PA.8) while plugging in, until the screen is
+  up, or a failed `rt_malloc`, runs only the stock scan loop. Then **no keys report at all**:
+  the stock scan's normal-mode reporting is exactly what the patch removed. Everything else
+  (screen, USB, sleep and wake, `npm run restore`) works, and none of the new scan code runs.
+  Meant as the way back if the new scan ever misbehaves. Tested 2026-09-26: silent keys as
+  expected; replugging without the button brings rollover back.
 - **Version string:** the dock then reports `V3.VSDM18_HXJDF.02.420` instead of `...02.020`
   (one string at 0x402965d4, copied as exactly 22 bytes). Still numeric and above every vendor
   release, so VSD Craft does not offer an "update". Hosts can recognise the patched firmware by

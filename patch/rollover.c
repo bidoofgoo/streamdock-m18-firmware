@@ -8,9 +8,10 @@
 // behave exactly as before.
 //
 // Safe mode: holding the left plain button (PA.8) while plugging the dock in,
-// or a failed buffer allocation, runs only the stock scan, forever. The three
-// plain buttons do not report then, but the display keys work as stock and,
-// more to the point, so does the host connection, so a restore can be run.
+// until the screen is up, or a failed buffer allocation, runs only the stock
+// scan, forever. No key reports at all then (the stock scan's normal-mode
+// reporting is what this patch replaces), but none of the new scan code runs
+// and the host connection works, so a restore can be run.
 //
 // Original code. Every vendor address it uses is listed in rollover.ld.
 //

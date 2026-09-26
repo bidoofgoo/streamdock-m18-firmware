@@ -16,7 +16,7 @@ reported over USB, so the dock can play chords.
 > **Status:** the [firmware backup](BACKUP.md) works and is verified. The
 > [restore tool](RESTORE.md) works: tested with a full rewrite of the firmware partition. The
 > rollover patch works on a 02.020 unit (flashed 2026-09-26): up to 11 keys at once, every
-> press and release reported, no ghosting. Still to test: safe mode.
+> press and release reported, no ghosting.
 
 ## Back up your dock first
 
@@ -57,17 +57,19 @@ script** that you apply to a backup of **your own** dock:
 1. Back up your dock's flash with `npm run backup` (above). **Keep that file safe: it is your
    only way back.**
 2. Prove that restoring works on your dock ([RESTORE.md](RESTORE.md#first-time-the-test-ladder)).
-3. Run `npm run patch -- backups/my-m18.bin backups/my-m18-rollover.bin`. It checks that it recognises your
-   firmware build exactly, and refuses anything else.
+3. Run `npm run patch -- backups/my-m18.bin backups/my-m18-rollover.bin`. It checks that it
+   recognises your firmware build exactly, and refuses anything else.
 4. Flash it: `npm run restore -- backups/my-m18-rollover.bin --only=os`, then try it with
    `npm run keytest`.
+
+**Step by step, with safe mode and how to go back: [PATCH.md](PATCH.md).**
 
 The patch keeps the existing key report format and only changes *when* reports are sent: one
 down or up event per key that changes, for any number of keys. Hosts that already speak the M18
 protocol, including the streamdock-m18 driver and `dockd`, then get chords with no changes on
 their side.
 
-See [DESIGN.md](DESIGN.md) for the details and the open questions.
+See [DESIGN.md](DESIGN.md) for the details.
 
 ## Hardware facts this relies on
 
